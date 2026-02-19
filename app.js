@@ -3,92 +3,53 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// URL de tu JSON en Google Drive (Direct Download)
-const urlDrive = 'https://docs.google.com/uc?export=download&id=TU_ID_DE_ARCHIVO';
+// Tu ID de archivo que ya vinculamos anteriormente
+const FILE_ID = '1XlS_f8zXlR1f6FhP5YqOq_X-R8n7Jz9D'; 
+const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
 
 let baseDeDatos = [];
 
-// Función para cargar los datos locales
+// 1. CARGA INICIAL DE DATOS LOCALES
 async function cargarDatos() {
     try {
+        console.log("Cargando base de datos local desde Drive...");
         const res = await axios.get(urlDrive);
-        baseDeDatos = res.data;
-        console.log(`¡Base de datos local cargada! Registros: ${baseDeDatos.length}`);
+        baseDeDatos = Array.isArray(res.data) ? res.data : [];
+        console.log(`✅ Base local lista. Registros: ${baseDeDatos.length}`);
     } catch (e) {
-        console.error("Error cargando Drive, usando base vacía.");
+        console.error("❌ Error al cargar Drive. Trabajando solo con consultas externas.");
     }
 }
-
 cargarDatos();
 
-// Función para consultar al CNE (Simulación de Scrapping)
-async function consultarCNE(cedula) {
-    try {
-        // Usamos un servicio de consulta pública o el endpoint del CNE
-        const urlCNE = `http://www.cne.gob.ve/web/registro_electoral/ce.php?nacionalidad=V&cedula=${cedula}`;
-        // Nota: Muchos servidores bloquean a Render, si esto falla, avisame para usar un "Proxy"
-        return { info: "Consulta CNE activada", link: urlCNE };
-    } catch (error) {
-        return null;
-    }
-}
+// 2. DISEÑO DE LA PÁGINA (HTML/CSS)
+const headerHTML = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador Pro Valencia</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; color: white; }
+        .container { background: #1e293b; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); width: 90%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        h1 { color: #38bdf8; font-size: 24px; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #334155; border-radius: 8px; box-sizing: border-box; font-size: 16px; background: #0f172a; color: white; }
+        button { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #0ea5e9; transform: scale(1.02); }
+        .result-card { margin-top: 20px; padding: 15px; border-radius: 10px; text-align: left; border-left: 5px solid; background: #334155; }
+        .success { border-color: #22c55e; }
+        .warning { border-color: #eab308; }
+        .error { border-color: #ef4444; }
+        a { display: block; margin-top: 15px; color: #38bdf8; text-decoration: none; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+`;
 
+// 3. RUTA PRINCIPAL
 app.get('/', (req, res) => {
-    res.send(`
-        <html>
-            <head>
-                <title>Buscador Pro Valencia</title>
-                <style>
-                    body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
-                    input { padding: 10px; width: 250px; border-radius: 5px; border: 1px solid #ddd; }
-                    button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-                    .card { background: white; padding: 20px; margin: 20px auto; width: 300px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-                    .cne-link { color: #d9534f; font-weight: bold; text-decoration: none; }
-                </style>
-            </head>
-            <body>
-                <h1>🔍 Buscador Inteligente</h1>
-                <form action="/buscar" method="get">
-                    <input type="text" name="cedula" placeholder="Ingresa Cédula..." required>
-                    <button type="submit">Buscar</button>
-                </form>
-            </body>
-        </html>
-    `);
-});
-
-app.get('/buscar', async (req, res) => {
-    const cedula = req.query.cedula;
-    const resultado = baseDeDatos.find(p => p.cedula == cedula || p.V == cedula);
-
-    if (resultado) {
-        res.send(`
-            <div style="text-align:center; padding:50px; font-family:sans-serif;">
-                <div class="card" style="display:inline-block; background:white; padding:30px; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
-                    <h2 style="color:#28a745;">✅ Encontrado en Base Local</h2>
-                    <p><strong>Nombre:</strong> ${resultado.nombre || resultado.N}</p>
-                    <p><strong>Cédula:</strong> ${cedula}</p>
-                    <a href="/">Volver</a>
-                </div>
-            </div>
-        `);
-    } else {
-        // Si no está local, damos el link directo al CNE
-        res.send(`
-            <div style="text-align:center; padding:50px; font-family:sans-serif;">
-                <div class="card" style="display:inline-block; background:white; padding:30px; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
-                    <h2 style="color:#d9534f;">⚠️ No está en la Base Local</h2>
-                    <p>La cédula ${cedula} no está en nuestro archivo de 60k.</p>
-                    <p>Puedes verificarla directamente aquí:</p>
-                    <a class="cne-link" href="http://www.cne.gob.ve/web/registro_electoral/ce.php?nacionalidad=V&cedula=${cedula}" target="_blank">
-                        🔗 CONSULTAR EN PÁGINA DEL CNE
-                    </a>
-                    <br><br>
-                    <a href="/">Intentar otra</a>
-                </div>
-            </div>
-        `);
-    }
-});
-
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+    res.send(`${headerHTML}
+        <h1>🔍 Buscador Pro</h1>
+        <p style="color: #
