@@ -1,114 +1,94 @@
 const express = require('express');
 const axios = require('axios');
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-let datos = [];
+// URL de tu JSON en Google Drive (Direct Download)
+const urlDrive = 'https://docs.google.com/uc?export=download&id=TU_ID_DE_ARCHIVO';
 
-// Función para cargar los 63MB desde Google Drive
-async function cargarBaseDeDatos() {
-    const driveID = '1Vx94bWfuI14uUXtFtckC1QFrn_WxVajj';
-    const url = `https://docs.google.com/uc?export=download&id=${driveID}`;
+let baseDeDatos = [];
 
+// Función para cargar los datos locales
+async function cargarDatos() {
     try {
-        console.log("Conectando con Google Drive...");
-        const respuesta = await axios.get(url);
-        // Ajuste según la estructura de tu JSON
-        datos = respuesta.data.valencia || (Array.isArray(respuesta.data) ? respuesta.data : Object.values(respuesta.data)[0]);
-        console.log("¡Base de datos cargada con éxito! Registros:", datos.length);
-    } catch (err) {
-        console.error("Error al descargar de Drive. Asegúrate de que el archivo sea 'Público'.");
+        const res = await axios.get(urlDrive);
+        baseDeDatos = res.data;
+        console.log(`¡Base de datos local cargada! Registros: ${baseDeDatos.length}`);
+    } catch (e) {
+        console.error("Error cargando Drive, usando base vacía.");
+    }
+}
+
+cargarDatos();
+
+// Función para consultar al CNE (Simulación de Scrapping)
+async function consultarCNE(cedula) {
+    try {
+        // Usamos un servicio de consulta pública o el endpoint del CNE
+        const urlCNE = `http://www.cne.gob.ve/web/registro_electoral/ce.php?nacionalidad=V&cedula=${cedula}`;
+        // Nota: Muchos servidores bloquean a Render, si esto falla, avisame para usar un "Proxy"
+        return { info: "Consulta CNE activada", link: urlCNE };
+    } catch (error) {
+        return null;
     }
 }
 
 app.get('/', (req, res) => {
     res.send(`
-        <!DOCTYPE html>
         <html>
-        <head>
-            <title>Buscador Profesional Valencia</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <style>
-                :root { --primary: #0062ff; --bg: #f8f9fa; }
-                body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; }
-                .container { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
-                .search-area { display: flex; gap: 10px; margin: 20px 0; }
-                input { flex: 1; padding: 12px; border: 2px solid #eee; border-radius: 8px; font-size: 16px; outline: none; }
-                input:focus { border-color: var(--primary); }
-                .btn { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-                .btn-search { background: var(--primary); color: white; }
-                .btn-clear { background: #eee; color: #444; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { text-align: left; padding: 12px; border-bottom: 2px solid #eee; color: #666; font-size: 13px; }
-                td { padding: 12px; border-bottom: 1px solid #eee; font-size: 15px; }
-                tr:hover { background: #f0f7ff; }
-                .badge { background: #e7f3ff; color: var(--primary); padding: 4px 8px; border-radius: 4px; font-family: monospace; }
-                #contador { color: #888; font-size: 14px; margin-top: 10px; }
-                .btn-more { width: 100%; margin-top: 15px; background: #f0f2f5; color: var(--primary); display: none; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h2>📊 Buscador de Datos Valencia</h2>
-                <div class="search-area">
-                    <input type="text" id="bus" placeholder="Cédula o nombre..." onkeyup="if(event.key==='Enter') buscar()">
-                    <button class="btn btn-search" onclick="buscar()">Buscar</button>
-                    <button class="btn btn-clear" onclick="limpiar()">Limpiar</button>
-                </div>
-                <div id="contador"></div>
-                <table id="tabla" style="display:none">
-                    <thead><tr><th>Cédula</th><th>Nombre</th></tr></thead>
-                    <tbody id="cuerpo"></tbody>
-                </table>
-                <button id="btnMas" class="btn btn-more" onclick="mostrarMas()">Cargar más resultados</button>
-            </div>
-            <script>
-                let resultados = [];
-                let visibleCount = 0;
-
-                function limpiar() {
-                    document.getElementById('bus').value = "";
-                    document.getElementById('cuerpo').innerHTML = "";
-                    document.getElementById('tabla').style.display = "none";
-                    document.getElementById('contador').innerText = "";
-                    document.getElementById('btnMas').style.display = "none";
-                }
-
-                async function buscar() {
-                    const q = document.getElementById('bus').value.toUpperCase();
-                    if(!q) return;
-                    document.getElementById('contador').innerText = "Buscando...";
-                    
-                    const res = await fetch(\`/api/buscar?q=\${q}\`);
-                    resultados = await res.json();
-                    visibleCount = 0;
-                    document.getElementById('cuerpo').innerHTML = "";
-                    mostrarMas();
-                }
-
-                function mostrarMas() {
-                    const chunk = resultados.slice(visibleCount, visibleCount + 50);
-                    const html = chunk.map(p => \`<tr><td><span class="badge">\${p.CEDULA}</span></td><td>\${p.NOMBRE}</td></tr>\`).join('');
-                    document.getElementById('cuerpo').innerHTML += html;
-                    visibleCount += chunk.length;
-                    
-                    document.getElementById('tabla').style.display = "table";
-                    document.getElementById('contador').innerText = \`Mostrando \${visibleCount} de \${resultados.length} encontrados\`;
-                    document.getElementById('btnMas').style.display = visibleCount < resultados.length ? "block" : "none";
-                }
-            </script>
-        </body>
+            <head>
+                <title>Buscador Pro Valencia</title>
+                <style>
+                    body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+                    input { padding: 10px; width: 250px; border-radius: 5px; border: 1px solid #ddd; }
+                    button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+                    .card { background: white; padding: 20px; margin: 20px auto; width: 300px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                    .cne-link { color: #d9534f; font-weight: bold; text-decoration: none; }
+                </style>
+            </head>
+            <body>
+                <h1>🔍 Buscador Inteligente</h1>
+                <form action="/buscar" method="get">
+                    <input type="text" name="cedula" placeholder="Ingresa Cédula..." required>
+                    <button type="submit">Buscar</button>
+                </form>
+            </body>
         </html>
     `);
 });
 
-app.get('/api/buscar', (req, res) => {
-    const q = (req.query.q || "").toUpperCase();
-    const filtrados = datos.filter(p => String(p.CEDULA).includes(q) || String(p.NOMBRE).includes(q));
-    res.json(filtrados);
+app.get('/buscar', async (req, res) => {
+    const cedula = req.query.cedula;
+    const resultado = baseDeDatos.find(p => p.cedula == cedula || p.V == cedula);
+
+    if (resultado) {
+        res.send(`
+            <div style="text-align:center; padding:50px; font-family:sans-serif;">
+                <div class="card" style="display:inline-block; background:white; padding:30px; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+                    <h2 style="color:#28a745;">✅ Encontrado en Base Local</h2>
+                    <p><strong>Nombre:</strong> ${resultado.nombre || resultado.N}</p>
+                    <p><strong>Cédula:</strong> ${cedula}</p>
+                    <a href="/">Volver</a>
+                </div>
+            </div>
+        `);
+    } else {
+        // Si no está local, damos el link directo al CNE
+        res.send(`
+            <div style="text-align:center; padding:50px; font-family:sans-serif;">
+                <div class="card" style="display:inline-block; background:white; padding:30px; border-radius:15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+                    <h2 style="color:#d9534f;">⚠️ No está en la Base Local</h2>
+                    <p>La cédula ${cedula} no está en nuestro archivo de 60k.</p>
+                    <p>Puedes verificarla directamente aquí:</p>
+                    <a class="cne-link" href="http://www.cne.gob.ve/web/registro_electoral/ce.php?nacionalidad=V&cedula=${cedula}" target="_blank">
+                        🔗 CONSULTAR EN PÁGINA DEL CNE
+                    </a>
+                    <br><br>
+                    <a href="/">Intentar otra</a>
+                </div>
+            </div>
+        `);
+    }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    cargarBaseDeDatos();
-    console.log("Servidor en la nube activo");
-});
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
