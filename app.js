@@ -3,6 +3,7 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Tu ID de Drive
 const FILE_ID = '1XlS_f8zXlR1f6FhP5YqOq_X-R8n7Jz9D'; 
 const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
 
@@ -10,107 +11,62 @@ let baseDeDatos = [];
 
 async function cargarDatos() {
     try {
+        console.log("Intentando descargar base de datos...");
         const res = await axios.get(urlDrive);
-        baseDeDatos = Array.isArray(res.data) ? res.data : [];
-        console.log(`✅ Base local lista: ${baseDeDatos.length} registros.`);
+        // Forzamos a que sea un Array, si viene como objeto lo metemos en uno
+        baseDeDatos = Array.isArray(res.data) ? res.data : [res.data];
+        console.log(`✅ Base local cargada con ${baseDeDatos.length} registros.`);
     } catch (e) {
-        console.error("❌ Error al cargar Drive.");
+        console.error("❌ ERROR CRÍTICO: No se pudo leer el archivo de Drive.");
     }
 }
 cargarDatos();
 
-const headerHTML = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador Maestro Valencia</title>
-    <style>
-        body { font-family: sans-serif; background: #0f172a; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; color: white; }
-        .container { background: #1e293b; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); width: 95%; max-width: 500px; text-align: center; border: 1px solid #334155; }
-        h1 { color: #38bdf8; font-size: 22px; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #334155; border-radius: 8px; background: #0f172a; color: white; font-size: 16px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .result-card { margin-top: 15px; padding: 15px; border-radius: 10px; text-align: left; background: #334155; border-left: 5px solid #38bdf8; font-size: 14px; }
-        .data-row { margin: 4px 0; border-bottom: 1px solid #475569; padding-bottom: 3px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-bottom: 10px; text-transform: uppercase; }
-        .local { background: #22c55e; color: white; }
-        .externo { background: #eab308; color: #0f172a; }
-        a { display: block; margin-top: 15px; color: #38bdf8; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <div class="container">
-`;
+const css = `
+<style>
+    body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
+    .card { background: #1e293b; border-left: 5px solid #38bdf8; margin: 10px auto; padding: 15px; max-width: 500px; text-align: left; border-radius: 8px; }
+    input { padding: 12px; border-radius: 8px; border: none; width: 80%; max-width: 300px; margin-bottom: 10px; }
+    button { padding: 12px 20px; background: #38bdf8; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    pre { background: #0f172a; padding: 10px; font-size: 12px; overflow-x: auto; }
+</style>`;
 
 app.get('/', (req, res) => {
-    res.send(`${headerHTML}
-        <h1>🔍 Buscador Maestro</h1>
-        <p style="color: #94a3b8; font-size: 13px;">Ingresa nombre o cédula</p>
+    res.send(`${css}
+        <h1>🔍 Buscador Ultra-Flexible</h1>
+        <p>Registros cargados: ${baseDeDatos.length}</p>
         <form action="/buscar" method="get">
-            <input type="text" name="termino" placeholder="Ej: 12345678 o JUAN PEREZ" required>
+            <input type="text" name="q" placeholder="Cédula o nombre..." required>
             <button type="submit">BUSCAR</button>
-        </form>
-    </div></body></html>`);
+        </form>`);
 });
 
-app.get('/buscar', async (req, res) => {
-    const termino = req.query.termino.trim().toUpperCase();
-    const esNumero = /^\d+$/.test(termino);
+app.get('/buscar', (req, res) => {
+    const query = req.query.q.trim().toUpperCase();
     
-    // 1. BÚSQUEDA EN BASE LOCAL (Por Cédula o por Nombre)
-    let resultados = [];
-    if (esNumero) {
-        resultados = baseDeDatos.filter(p => 
-            p.cedula == termino || p.CEDULA == termino || p.V == termino || p.v == termino
+    // BUSQUEDA TOTAL: No importa el nombre de la columna
+    const resultados = baseDeDatos.filter(fila => {
+        return Object.values(fila).some(valor => 
+            String(valor).toUpperCase().includes(query)
         );
-    } else {
-        // Busca en cualquier columna que contenga el texto (Nombre, Apellido, etc)
-        resultados = baseDeDatos.filter(p => 
-            Object.values(p).some(valor => String(valor).toUpperCase().includes(termino))
-        ).slice(0, 10); // Limitamos a 10 resultados para no saturar
-    }
+    }).slice(0, 10); // Mostramos los primeros 10
 
-    let htmlResultados = "";
+    let html = `${css}<h2>Resultados para: ${query}</h2>`;
 
-    // Si hay resultados locales
     if (resultados.length > 0) {
-        resultados.forEach(encontrado => {
-            let filas = "";
-            for (let clave in encontrado) {
-                filas += `<div class="data-row"><strong>${clave}:</strong> ${encontrado[clave]}</div>`;
+        resultados.forEach(r => {
+            html += `<div class="card">`;
+            for (let llave in r) {
+                html += `<div><strong>${llave}:</strong> ${r[llave]}</div>`;
             }
-            htmlResultados += `<div class="result-card"><span class="badge local">Base Local</span>${filas}</div>`;
+            html += `</div>`;
         });
-    } 
-    
-    // 2. SI ES NÚMERO Y NO ESTÁ LOCAL, CONSULTA EXTERNA
-    else if (esNumero) {
-        try {
-            const apiRes = await axios.get(`https://api.cedula.com.ve/api/v1/cedula/${termino}`, { timeout: 3500 });
-            if (apiRes.data && apiRes.data.nombre) {
-                const d = apiRes.data;
-                htmlResultados = `
-                    <div class="result-card">
-                        <span class="badge externo">Red Externa (IVSS)</span>
-                        <div class="data-row"><strong>Nombre:</strong> ${d.nombre} ${d.apellido || ''}</div>
-                        <div class="data-row"><strong>Cédula:</strong> ${termino}</div>
-                    </div>`;
-            }
-        } catch (err) {}
+    } else {
+        html += `<div class="card" style="border-color:red">No se encontró nada en los ${baseDeDatos.length} registros locales.</div>`;
     }
 
-    // 3. RESPUESTA FINAL
-    if (htmlResultados === "") {
-        htmlResultados = `<div class="result-card" style="border-color: #ef4444;"><h3>⚠️ Sin coincidencias</h3><p>No encontramos nada para "${termino}"</p></div>`;
-    }
-
-    res.send(`${headerHTML}
-        <h2>Resultados para: ${termino}</h2>
-        ${htmlResultados}
-        <a href="/">← Nueva búsqueda</a>
-    </div></body></html>`);
+    html += `<br><a href="/" style="color:#38bdf8">← Volver</a>`;
+    res.send(html);
 });
 
-app.listen(PORT, () => console.log(`🚀 Online en puerto ${PORT}`));
+app.listen(PORT, () => console.log("Servidor listo"));
