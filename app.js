@@ -25,8 +25,8 @@ async function loginPSUV() {
 
         // Usamos URLSearchParams para simular un formulario real de navegador
         const params = new URLSearchParams();
-        params.append('usuario', 'TU_CORREO@AQUI.COM'); 
-        params.append('password', 'TU_CLAVE_AQUI');
+        params.append('usuario', 'jfederico2007@gmail.com'); 
+        params.append('password', '12345678');
         params.append('entrar', '1'); // Algunos sistemas piden este campo extra
 
         const resLogin = await axios.post('https://organizacion.psuv.org.ve/login/', params, {
@@ -144,5 +144,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => console.log("V4 Online"));
+
 
 
