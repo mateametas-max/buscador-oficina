@@ -1,32 +1,64 @@
 const express = require('express');
 const axios = require('axios');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Configuración de la fuente de datos
-const DRIVE_JSON_URL = "TU_URL_DE_GOOGLE_DRIVE_AQUÍ"; 
+// 1. CONFIGURACIÓN DATA VALENCIA (63MB)
+const FILE_ID = '1Vx94bWfuI14uUXtFtckC1QFrn_WxVajj'; 
+const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}&confirm=t`;
 
 let baseDeDatos = [];
-let statusCarga = "Sincronizando con el repositorio de datos...";
+let statusCarga = "⏳ Sincronizando Base de Datos Valencia...";
 
-// Función para obtener los datos
-async function sincronizar() {
+async function cargarDatos() {
     try {
-        const res = await axios.get(DRIVE_JSON_URL);
-        // Ajuste según la estructura de tu JSON
-        baseDeDatos = Array.isArray(res.data) ? res.data : (res.data.records || Object.values(res.data)[0]);
-        statusCarga = `SISTEMA OPERATIVO: ${baseDeDatos.length} registros indexados.`;
-        console.log("Base de datos actualizada.");
-        return true;
+        const res = await axios.get(urlDrive, { timeout: 250000 });
+        baseDeDatos = Array.isArray(res.data) ? res.data : (Object.values(res.data).find(Array.isArray) || [res.data]);
+        statusCarga = `✅ SISTEMA MAESTRO V3: ${baseDeDatos.length} registros activos.`;
     } catch (e) {
-        statusCarga = "ERROR DE CONEXIÓN CON LA FUENTE DE DATOS.";
-        return false;
+        statusCarga = "❌ Error Drive. Reintentando...";
+        setTimeout(cargarDatos, 10000);
     }
 }
+cargarDatos();
 
-sincronizar();
+// 2. LÓGICA DE BÚSQUEDA TRIPLE
+app.get('/api/buscar', async (req, res) => {
+    const q = (req.query.q || "").trim().toUpperCase();
+    if (!q) return res.json([]);
 
-// --- INTERFAZ FRONTEND (Estilo vzlapi) ---
+    // NIVEL 1: Buscar en tus 63MB
+    let resultados = baseDeDatos.filter(f => 
+        Object.values(f).some(v => String(v).toUpperCase().includes(q))
+    ).slice(0, 10);
+
+    // NIVEL 2: Consultar la API de VZLA (Nuevo Hallazgo)
+    const esCedula = /^\d+$/.test(q);
+    if (esCedula) {
+        try {
+            // Intentamos obtener el acta/datos electorales
+            const resVzla = await axios.get(`https://api.vzlapi.com/actas?cedula=${q}`, { timeout: 3500 });
+            if (resVzla.data && resVzla.data.nombre) {
+                resultados.unshift({
+                    CEDULA: q,
+                    NOMBRE: resVzla.data.nombre,
+                    ESTADO: resVzla.data.estado || "N/A",
+                    MUNICIPIO: resVzla.data.municipio || "N/A",
+                    CENTRO: resVzla.data.centro || "Dato Electoral",
+                    FUENTE: "VZLA API (ACTAS)"
+                });
+            }
+        } catch (e) { console.log("VZLA API fuera de línea"); }
+    }
+
+    // NIVEL 3: Si no hay nada, activar botones de auxilio
+    if (esCedula && resultados.length === 0) {
+        resultados.push({ ES_AYUDA: true, CEDULA: q });
+    }
+    res.json(resultados);
+});
+
+// 3. INTERFAZ PROFESIONAL
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -34,89 +66,77 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API de Consulta - Valencia</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Buscador Maestro V3</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f9fafb; color: #111827; }
-        .container-main { max-width: 900px; margin: 0 auto; padding: 2rem; }
-        .status-dot { height: 10px; width: 10px; background-color: #10b981; border-radius: 50%; display: inline-block; margin-right: 8px; }
-        .data-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; transition: shadow 0.2s; }
-        .data-card:hover { border-color: #3b82f6; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        body { font-family: 'Inter', sans-serif; background: #020617; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 550px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        h1 { color: #38bdf8; font-size: 28px; margin: 0; letter-spacing: -1px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; background: #1e293b; color: #38bdf8; margin-top: 10px; border: 1px solid #334155; }
+        .search-area { background: #0f172a; padding: 25px; border-radius: 20px; border: 1px solid #1e293b; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        input { width: 100%; padding: 15px; border-radius: 12px; border: 1px solid #334155; background: #020617; color: white; font-size: 18px; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input:focus { border-color: #38bdf8; ring: 2px #38bdf8; }
+        button { width: 100%; padding: 15px; margin-top: 15px; background: #38bdf8; color: #020617; border: none; border-radius: 12px; font-weight: 800; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        #res { margin-top: 25px; }
+        .card { background: #1e293b; padding: 18px; margin-bottom: 15px; border-radius: 14px; border-left: 6px solid #38bdf8; position: relative; }
+        .card .tag { position: absolute; top: 10px; right: 10px; font-size: 9px; background: #38bdf8; color: #020617; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .card b { color: #94a3b8; font-size: 10px; display: block; margin-top: 8px; }
+        .card span { font-size: 15px; color: #f1f5f9; font-weight: 500; }
+        .help-box { background: #1e1b4b; border: 2px dashed #4338ca; padding: 20px; border-radius: 16px; text-align: center; }
+        .btn-ext { display: block; padding: 12px; margin: 10px 0; border-radius: 8px; text-decoration: none; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-ext:hover { opacity: 0.8; }
     </style>
 </head>
 <body>
-    <div class="container-main">
-        <header class="border-b border-gray-200 pb-6 mb-8">
-            <h1 class="text-3xl font-extrabold tracking-tight text-gray-900">api.valencia-datos.com</h1>
-            <p class="text-gray-500 mt-2">Plataforma de consulta y acceso a datos públicos del registro de Valencia.</p>
-            <div class="mt-4 flex items-center text-sm font-medium text-gray-600">
-                <span class="status-dot"></span> ${statusCarga}
-            </div>
-        </header>
+    <div class="container">
+        <div class="header">
+            <h1>🇻🇪 Maestro V3</h1>
+            <div class="status-badge">${statusCarga}</div>
+        </div>
 
-        <section class="mb-12">
-            <label class="block text-sm font-semibold text-gray-700 mb-2">BUSCAR REGISTRO</label>
-            <div class="relative">
-                <input type="text" id="q" placeholder="Introduce número de cédula o nombre completo..." 
-                    class="w-full p-4 text-lg border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    oninput="buscar()">
-                <div id="loading" class="hidden absolute right-4 top-4 text-gray-400">Buscando...</div>
-            </div>
-            <p class="mt-2 text-xs text-gray-400 font-mono italic">Endpoint: GET /api/v1/consultar?cedula={valor}</p>
-        </section>
+        <div class="search-area">
+            <input type="text" id="q" placeholder="Cédula o Nombre..." onkeyup="if(event.key==='Enter') buscar()">
+            <button onclick="buscar()">INICIAR BÚSQUEDA</button>
+        </div>
 
-        <div id="resultados" class="grid grid-cols-1 gap-4">
-            </div>
-
-        <footer class="mt-20 pt-8 border-t border-gray-200 text-center text-gray-400 text-xs">
-            © 2026 Datos Abiertos Valencia - Inspirado en el proyecto vzlapi
-        </footer>
+        <div id="res"></div>
     </div>
 
     <script>
-        let timer;
-        function buscar() {
-            clearTimeout(timer);
-            const query = document.getElementById('q').value.trim();
-            const contenedor = document.getElementById('resultados');
+        async function buscar() {
+            const q = document.getElementById('q').value;
+            const resDiv = document.getElementById('res');
+            if(!q) return;
+
+            resDiv.innerHTML = '<div style="text-align:center; color:#38bdf8;">Consultando fuentes nacionales...</div>';
             
-            if(query.length < 3) {
-                contenedor.innerHTML = '';
-                return;
-            }
+            try {
+                const response = await fetch('/api/buscar?q=' + encodeURIComponent(q));
+                const datos = await response.json();
+                resDiv.innerHTML = '';
 
-            document.getElementById('loading').classList.remove('hidden');
-            
-            timer = setTimeout(async () => {
-                try {
-                    const r = await fetch('/api/buscar?q=' + encodeURIComponent(query));
-                    const data = await r.json();
-                    
-                    document.getElementById('loading').classList.add('hidden');
-                    contenedor.innerHTML = '';
-
-                    if(data.length === 0) {
-                        contenedor.innerHTML = '<div class="text-center p-10 bg-gray-50 rounded-lg text-gray-400">No se encontraron registros para esta consulta.</div>';
-                        return;
-                    }
-
-                    data.forEach(item => {
-                        let inner = '';
-                        for(let k in item) {
-                            inner += \`
-                                <div>
-                                    <dt class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">\${k}</dt>
-                                    <dd class="text-gray-800 font-medium font-mono">\${item[k]}</dd>
-                                </div>\`;
-                        }
-                        contenedor.innerHTML += \`
-                            <div class="data-card p-6 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                \${inner}
+                datos.forEach(r => {
+                    if(r.ES_AYUDA) {
+                        resDiv.innerHTML += \`
+                            <div class="help-box">
+                                <p style="margin-top:0; font-weight:bold;">⚠️ REGISTRO NO LOCALIZADO</p>
+                                <small>No está en la data de Valencia. Intenta en:</small>
+                                <a href="http://www.cne.gob.ve/web/registro_electoral/ce.php?nacionalidad=V&cedula=\${r.CEDULA}" target="_blank" class="btn-ext" style="background:#dc2626;">SISTEMA CNE</a>
+                                <a href="http://www.ivss.gov.ve/tiempo-real/cuenta-individual?cedula=\${r.CEDULA}" target="_blank" class="btn-ext" style="background:#2563eb;">SISTEMA IVSS</a>
                             </div>\`;
-                    });
-                } catch(e) { console.error(e); }
-            }, 300);
+                    } else {
+                        let h = '<div class="card">';
+                        if(r.FUENTE) h += '<div class="tag">'+r.FUENTE+'</div>';
+                        for(let k in r) {
+                            if(k !== 'FUENTE') h += \`<div><b>\${k}</b><span>\${r[k]}</span></div>\`;
+                        }
+                        resDiv.innerHTML += h + '</div>';
+                    }
+                });
+            } catch (err) {
+                resDiv.innerHTML = '<p style="color:#ef4444; text-align:center;">Fallo de conexión.</p>';
+            }
         }
     </script>
 </body>
@@ -124,19 +144,4 @@ app.get('/', (req, res) => {
     `);
 });
 
-// --- API ENDPOINT (JSON PURO) ---
-app.get('/api/buscar', (req, res) => {
-    const q = req.query.q ? req.query.q.trim().toUpperCase() : "";
-    const resultados = baseDeDatos.filter(f => 
-        Object.values(f).some(v => String(v).toUpperCase().includes(q))
-    ).slice(0, 10);
-    res.json(resultados);
-});
-
-// Ruta para refrescar datos desde el Drive
-app.get('/refresh', async (req, res) => {
-    await sincronizar();
-    res.redirect('/');
-});
-
-app.listen(PORT, () => console.log(`Servidor iniciado en puerto ${PORT}`));
+app.listen(PORT, () => console.log("V3 Online"));
