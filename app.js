@@ -19,8 +19,8 @@ async function loginPSUV() {
         let cookieInic = res1.headers['set-cookie'] ? res1.headers['set-cookie'].join('; ') : "";
 
         const params = new URLSearchParams();
-        params.append('usuario', 'TU_CORREO@AQUI.COM'); // <-- PON TU CORREO
-        params.append('password', 'TU_CLAVE_AQUI');      // <-- PON TU CLAVE
+        params.append('usuario', 'jfederico2007@gmail.com'); // <-- PON TU CORREO
+        params.append('password', '12345678');      // <-- PON TU CLAVE
         params.append('accion', 'login');
 
         const resLogin = await axios.post('https://organizacion.psuv.org.ve/login/', params, {
@@ -132,3 +132,4 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => console.log("V4 Online"));
+
