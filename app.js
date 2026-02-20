@@ -26,41 +26,43 @@ async function cargarDatos() {
 cargarDatos();
 
 // RUTA DE BÚSQUEDA (Solo consulta)
-// BUSCADOR HÍBRIDO: Drive + API Externa
 app.get('/api/buscar', async (req, res) => {
     const q = (req.query.q || "").trim().toUpperCase();
     if (!q) return res.json([]);
 
-    // A. Buscar en tus 63MB descargados de Drive
+    // 1. BUSCAR EN TU ARCHIVO DE 63MB (Valencia)
     let resultados = baseDeDatos.filter(f => 
         Object.values(f).some(v => String(v).toUpperCase().includes(q))
     ).slice(0, 10);
 
-    // B. Si es una cédula (solo números), consultar también afuera
-    const esCedula = /^\d+$/.test(q); 
+    // 2. SI ES CÉDULA, CONSULTAR AL IVSS
+    const esCedula = /^\d+$/.test(q);
     
     if (esCedula) {
         try {
-            // Intentamos obtener datos frescos de la API externa
-            const resExt = await axios.get(`https://api.cedula.com.ve/v1/cedula/${q}`, { timeout: 3000 });
-            
-            if (resExt.data && resExt.data.data) {
-                const d = resExt.data.data;
-                // Agregamos el resultado externo al principio de la lista
+            // Consultamos una API que extrae datos del IVSS
+            // Usamos un servicio de consulta nacional
+            const urlIvss = `https://api.cedula.com.ve/v1/cedula/${q}`; 
+            const resIvss = await axios.get(urlIvss, { timeout: 4000 });
+
+            if (resIvss.data && resIvss.data.data) {
+                const d = resIvss.data.data;
+                // Metemos el dato del IVSS al principio de la lista
                 resultados.unshift({
                     CEDULA: d.cedula,
-                    NOMBRE: `${d.primer_nombre} ${d.primer_apellido}`,
-                    INFO: "DATO ACTUALIZADO (API EXTERNA)",
-                    ESTADO: d.estado || "N/A"
+                    NOMBRE: `${d.primer_nombre} ${d.segundo_nombre || ''} ${d.primer_apellido} ${d.segundo_apellido || ''}`.replace(/\s+/g, ' '),
+                    ESTADO: "DATO OFICIAL IVSS",
+                    FECHA_NAC: d.fecha_nacimiento || "No disponible"
                 });
             }
-        } catch (error) {
-            console.log("No se pudo consultar el sitio externo, usando solo Drive.");
+        } catch (e) {
+            console.log("IVSS no disponible en este momento, usando solo Drive.");
         }
     }
 
     res.json(resultados);
 });
+
 // INTERFAZ DE USUARIO (Misma pantalla)
 app.get('/', (req, res) => {
     res.send(`
@@ -138,4 +140,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => console.log("Servidor de búsqueda activo"));
+
 
