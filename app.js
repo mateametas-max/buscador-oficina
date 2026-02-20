@@ -3,70 +3,83 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Tu ID de Drive
-const FILE_ID = '1XlS_f8zXlR1f6FhP5YqOq_X-R8n7Jz9D'; 
-const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
+// Tu link de Dropbox verificado
+const urlDatos = 'https://www.dropbox.com/scl/fi/g65tf8bw4832m7iak1l12/personas.json?rlkey=ofybclvoebt2hg3omg9bvo20q&st=jykugoaq&dl=1'; 
 
 let baseDeDatos = [];
+let statusCarga = "⏳ Descargando base de datos (63MB)...";
 
 async function cargarDatos() {
     try {
-        console.log("Intentando descargar base de datos...");
-        const res = await axios.get(urlDrive);
-        // Forzamos a que sea un Array, si viene como objeto lo metemos en uno
-        baseDeDatos = Array.isArray(res.data) ? res.data : [res.data];
-        console.log(`✅ Base local cargada con ${baseDeDatos.length} registros.`);
+        console.log("Conectando con Dropbox...");
+        // Aumentamos el tiempo de espera (timeout) porque el archivo es pesado
+        const res = await axios.get(urlDatos, { timeout: 60000 });
+        
+        if (res.data) {
+            baseDeDatos = Array.isArray(res.data) ? res.data : [res.data];
+            statusCarga = `✅ SISTEMA ONLINE: ${baseDeDatos.length} registros cargados.`;
+            console.log("Base de datos cargada con éxito.");
+        }
     } catch (e) {
-        console.error("❌ ERROR CRÍTICO: No se pudo leer el archivo de Drive.");
+        statusCarga = "❌ Error: El servidor no pudo procesar el archivo pesado.";
+        console.error("Error detallado:", e.message);
     }
 }
 cargarDatos();
 
-const css = `
-<style>
-    body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-    .card { background: #1e293b; border-left: 5px solid #38bdf8; margin: 10px auto; padding: 15px; max-width: 500px; text-align: left; border-radius: 8px; }
-    input { padding: 12px; border-radius: 8px; border: none; width: 80%; max-width: 300px; margin-bottom: 10px; }
-    button { padding: 12px 20px; background: #38bdf8; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-    pre { background: #0f172a; padding: 10px; font-size: 12px; overflow-x: auto; }
+const css = `<style>
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
+    .container { max-width: 600px; margin: auto; }
+    .card { background: #1e293b; border-left: 5px solid #38bdf8; margin: 15px 0; padding: 20px; text-align: left; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    input { padding: 15px; border-radius: 10px; border: 2px solid #334155; width: 100%; max-width: 400px; background: #0f172a; color: white; font-size: 16px; margin-bottom: 10px; box-sizing: border-box; }
+    button { padding: 15px 30px; background: #38bdf8; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; color: #0f172a; font-size: 16px; transition: 0.3s; }
+    button:hover { background: #0ea5e9; transform: translateY(-2px); }
+    .data-row { border-bottom: 1px solid #334155; padding: 5px 0; display: flex; justify-content: space-between; font-size: 14px; }
+    .data-label { color: #94a3b8; font-weight: bold; }
+    a { color: #38bdf8; text-decoration: none; font-weight: bold; display: block; margin-top: 20px; }
 </style>`;
 
 app.get('/', (req, res) => {
     res.send(`${css}
-        <h1>🔍 Buscador Ultra-Flexible</h1>
-        <p>Registros cargados: ${baseDeDatos.length}</p>
-        <form action="/buscar" method="get">
-            <input type="text" name="q" placeholder="Cédula o nombre..." required>
-            <button type="submit">BUSCAR</button>
-        </form>`);
+        <div class="container">
+            <h1>🔍 Buscador Maestro Valencia</h1>
+            <p style="color:#38bdf8; font-weight: bold;">${statusCarga}</p>
+            <form action="/buscar" method="get">
+                <input type="text" name="q" placeholder="Cédula o Nombre Completo..." required>
+                <br>
+                <button type="submit">CONSULTAR REGISTRO</button>
+            </form>
+            <p style="font-size: 12px; color: #64748b; margin-top: 40px;">Búsqueda local optimizada para archivos grandes</p>
+        </div>`);
 });
 
 app.get('/buscar', (req, res) => {
-    const query = req.query.q.trim().toUpperCase();
+    const q = req.query.q.trim().toUpperCase();
     
-    // BUSQUEDA TOTAL: No importa el nombre de la columna
-    const resultados = baseDeDatos.filter(fila => {
-        return Object.values(fila).some(valor => 
-            String(valor).toUpperCase().includes(query)
-        );
-    }).slice(0, 10); // Mostramos los primeros 10
+    // Búsqueda profunda en todos los campos
+    const resultados = baseDeDatos.filter(f => 
+        Object.values(f).some(v => String(v).toUpperCase().includes(q))
+    ).slice(0, 15);
 
-    let html = `${css}<h2>Resultados para: ${query}</h2>`;
-
+    let html = `${css}<div class="container"><h2>Resultados para: ${q}</h2>`;
+    
     if (resultados.length > 0) {
         resultados.forEach(r => {
             html += `<div class="card">`;
-            for (let llave in r) {
-                html += `<div><strong>${llave}:</strong> ${r[llave]}</div>`;
+            for (let k in r) { 
+                html += `<div class="data-row"><span class="data-label">${k}:</span> <span>${r[k]}</span></div>`; 
             }
             html += `</div>`;
         });
     } else {
-        html += `<div class="card" style="border-color:red">No se encontró nada en los ${baseDeDatos.length} registros locales.</div>`;
+        html += `<div class="card" style="border-color:#ef4444">
+                    <h3>⚠️ Sin coincidencias</h3>
+                    <p>No se encontró el registro en la base local de Valencia.</p>
+                 </div>`;
     }
-
-    html += `<br><a href="/" style="color:#38bdf8">← Volver</a>`;
+    
+    html += `<a href="/">← Volver a buscar</a></div>`;
     res.send(html);
 });
 
-app.listen(PORT, () => console.log("Servidor listo"));
+app.listen(PORT, () => console.log("Servidor encendido"));
