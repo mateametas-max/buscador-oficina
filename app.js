@@ -1,53 +1,40 @@
 const express = require('express');
-const axios = require('axios');
+const axios = require('axios'); // Asegúrate de tener axios instalado: npm install axios
 const app = express();
-const PORT = process.env.PORT || 10000;
-
-// 1. CONFIGURACIÓN DE DRIVE (Tus 63MB)
-const FILE_ID = '1Vx94bWfuI14uUXtFtckC1QFrn_WxVajj'; 
-const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}&confirm=t`;
+const PORT = process.env.PORT || 3000;
 
 let baseDeDatos = [];
-let statusCarga = "⏳ Descargando base de datos de Valencia...";
+let statusCarga = "⏳ Iniciando sistema...";
+const DRIVE_URL = "TU_URL_DE_GOOGLE_DRIVE_AQUÍ"; // Reemplaza con tu enlace JSON/CSV
 
-// Función para cargar los datos en memoria
 async function cargarDatos() {
     try {
-        const res = await axios.get(urlDrive, { timeout: 200000 });
-        let datos = res.data;
-        baseDeDatos = Array.isArray(datos) ? datos : (Object.values(datos).find(Array.isArray) || [datos]);
-        statusCarga = `✅ SISTEMA ONLINE: ${baseDeDatos.length} registros cargados.`;
-        console.log("Datos cargados correctamente.");
+        const res = await axios.get(DRIVE_URL);
+        const datos = res.data;
+        
+        if (Array.isArray(datos)) {
+            baseDeDatos = datos;
+        } else if (typeof datos === 'object' && datos !== null) {
+            const clave = Object.keys(datos).find(k => Array.isArray(datos[k]));
+            baseDeDatos = clave ? datos[clave] : [datos];
+        }
+
+        statusCarga = `✅ ONLINE: ${baseDeDatos.length} registros cargados.`;
+        console.log("Datos sincronizados.");
+        return true;
     } catch (e) {
-        statusCarga = "❌ Error al conectar con Drive. Reintentando...";
-        setTimeout(cargarDatos, 10000);
+        statusCarga = "❌ ERROR: No se sincronizó con Drive.";
+        console.error("Error de carga:", e.message);
+        return false;
     }
 }
+
+// Cargar al inicio
 cargarDatos();
 
-// 2. RUTA DE BÚSQUEDA
-app.get('/api/buscar', (req, res) => {
-    const q = (req.query.q || "").trim().toUpperCase();
-    if (!q) return res.json([]);
+// --- RUTAS DE LA API ---
 
-    // Búsqueda en los 63MB locales
-    let resultados = baseDeDatos.filter(f => 
-        Object.values(f).some(v => String(v).toUpperCase().includes(q))
-    ).slice(0, 15);
-
-    // Si es cédula y no hay resultados, preparamos links externos
-    const esCedula = /^\d+$/.test(q);
-    if (esCedula && resultados.length === 0) {
-        resultados.push({
-            ES_AYUDA: true,
-            CEDULA: q,
-            MENSAJE: "No encontrado en Valencia. Consultar sistema nacional:"
-        });
-    }
-    res.json(resultados);
-});
-
-// 3. INTERFAZ VISUAL (HTML + CSS + JS)
+// 1. Página Principal (Frontend Unificado)
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -55,56 +42,11 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador Maestro Valencia</title>
+    <title>Buscador Valencia Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 500px; }
-        h1 { color: #38bdf8; margin-bottom: 10px; font-size: 24px; }
-        .status { font-size: 12px; color: #94a3b8; margin-bottom: 20px; }
-        .search-box { background: #1e293b; padding: 20px; border-radius: 15px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
-        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 16px; box-sizing: border-box; outline: none; transition: 0.3s; }
-        input:focus { border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
-        button { width: 100%; padding: 12px; margin-top: 10px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        button:hover { background: #0ea5e9; }
-        #res { margin-top: 20px; width: 100%; }
-        .card { background: #1e293b; padding: 15px; margin-bottom: 10px; border-radius: 10px; border-left: 4px solid #38bdf8; animation: fadeIn 0.3s ease; }
-        .card b { color: #38bdf8; font-size: 12px; text-transform: uppercase; }
-        .card div { margin-bottom: 5px; }
-        .ayuda-box { background: #1e293b; border: 2px dashed #f59e0b; padding: 15px; border-radius: 10px; text-align: center; }
-        .btn-ext { display: block; padding: 10px; margin: 8px 0; border-radius: 6px; text-decoration: none; font-weight: bold; color: white; font-size: 14px; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔍 Buscador Maestro</h1>
-        <div class="status">${statusCarga}</div>
-
-        <div class="search-box">
-            <input type="text" id="q" placeholder="Cédula o Nombre..." onkeyup="if(event.key==='Enter') buscar()">
-            <button onclick="buscar()">CONSULTAR</button>
-        </div>
-
-        <div id="res"></div>
-    </div>
-
-    <script>
-        async function buscar() {
-            const q = document.getElementById('q').value;
-            const resDiv = document.getElementById('res');
-            if(!q) return;
-
-            resDiv.innerHTML = '<p style="text-align:center; color:#38bdf8;">Buscando...</p>';
-            
-            try {
-                const response = await fetch('/api/buscar?q=' + encodeURIComponent(q));
-                const datos = await response.json();
-                resDiv.innerHTML = '';
-
-                if(datos.length === 0) {
-                    resDiv.innerHTML = '<p style="text-align:center;">No se encontró información.</p>';
-                    return;
-                }
-
-                datos.forEach(r => {
-                    if(r.ES_AYUDA) {
+        body { background-color: #0f172a; color: #f8fafc; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(56, 189, 248, 0.2); }
+        .card-result { transition: all 0.3s ease; border-left: 4px solid #38bdf8; }
+        .card-result:hover { transform: translateX(5px); background: #1e293b; }
+        .loader { width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #38bdf8; border-radius: 50%; animation: spin 1
