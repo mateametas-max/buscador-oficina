@@ -3,67 +3,51 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// CONFIGURACIÓN DRIVE (Data pesada de 63MB)
+// 1. CONFIGURACIÓN DE DRIVE (Tus 63MB)
 const FILE_ID = '1Vx94bWfuI14uUXtFtckC1QFrn_WxVajj'; 
 const urlDrive = `https://docs.google.com/uc?export=download&id=${FILE_ID}&confirm=t`;
 
 let baseDeDatos = [];
-let statusCarga = "⏳ Descargando base de datos...";
+let statusCarga = "⏳ Descargando base de datos de Valencia...";
 
-// Función para cargar los datos de Drive a la memoria del servidor
+// Función para cargar los datos en memoria
 async function cargarDatos() {
     try {
-        const res = await axios.get(urlDrive, { timeout: 150000 });
+        const res = await axios.get(urlDrive, { timeout: 200000 });
         let datos = res.data;
-        // Extraer la lista de registros (si es Array o está dentro de un objeto)
         baseDeDatos = Array.isArray(datos) ? datos : (Object.values(datos).find(Array.isArray) || [datos]);
-        statusCarga = `✅ SISTEMA LISTO: ${baseDeDatos.length} registros cargados.`;
+        statusCarga = `✅ SISTEMA ONLINE: ${baseDeDatos.length} registros cargados.`;
+        console.log("Datos cargados correctamente.");
     } catch (e) {
-        statusCarga = "❌ Error al cargar datos de Drive.";
-        console.error(e.message);
+        statusCarga = "❌ Error al conectar con Drive. Reintentando...";
+        setTimeout(cargarDatos, 10000);
     }
 }
 cargarDatos();
 
-// RUTA DE BÚSQUEDA (Solo consulta)
-app.get('/api/buscar', async (req, res) => {
+// 2. RUTA DE BÚSQUEDA
+app.get('/api/buscar', (req, res) => {
     const q = (req.query.q || "").trim().toUpperCase();
     if (!q) return res.json([]);
 
-    // 1. BUSCAR EN TU ARCHIVO DE 63MB (Valencia)
+    // Búsqueda en los 63MB locales
     let resultados = baseDeDatos.filter(f => 
         Object.values(f).some(v => String(v).toUpperCase().includes(q))
-    ).slice(0, 10);
+    ).slice(0, 15);
 
-    // 2. SI ES CÉDULA, CONSULTAR AL IVSS
+    // Si es cédula y no hay resultados, preparamos links externos
     const esCedula = /^\d+$/.test(q);
-    
-    if (esCedula) {
-        try {
-            // Consultamos una API que extrae datos del IVSS
-            // Usamos un servicio de consulta nacional
-            const urlIvss = `https://api.cedula.com.ve/v1/cedula/${q}`; 
-            const resIvss = await axios.get(urlIvss, { timeout: 4000 });
-
-            if (resIvss.data && resIvss.data.data) {
-                const d = resIvss.data.data;
-                // Metemos el dato del IVSS al principio de la lista
-                resultados.unshift({
-                    CEDULA: d.cedula,
-                    NOMBRE: `${d.primer_nombre} ${d.segundo_nombre || ''} ${d.primer_apellido} ${d.segundo_apellido || ''}`.replace(/\s+/g, ' '),
-                    ESTADO: "DATO OFICIAL IVSS",
-                    FECHA_NAC: d.fecha_nacimiento || "No disponible"
-                });
-            }
-        } catch (e) {
-            console.log("IVSS no disponible en este momento, usando solo Drive.");
-        }
+    if (esCedula && resultados.length === 0) {
+        resultados.push({
+            ES_AYUDA: true,
+            CEDULA: q,
+            MENSAJE: "No encontrado en Valencia. Consultar sistema nacional:"
+        });
     }
-
     res.json(resultados);
 });
 
-// INTERFAZ DE USUARIO (Misma pantalla)
+// 3. INTERFAZ VISUAL (HTML + CSS + JS)
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -71,74 +55,56 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador Valencia</title>
+    <title>Buscador Maestro Valencia</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-        .container { max-width: 600px; margin: auto; }
-        .search-box { background: #1e293b; padding: 25px; border-radius: 15px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        input { width: 75%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 16px; outline: none; }
-        input:focus { border-color: #38bdf8; }
-        button { padding: 12px 20px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: white; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; }
+        h1 { color: #38bdf8; margin-bottom: 10px; font-size: 24px; }
+        .status { font-size: 12px; color: #94a3b8; margin-bottom: 20px; }
+        .search-box { background: #1e293b; padding: 20px; border-radius: 15px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 16px; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input:focus { border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
+        button { width: 100%; padding: 12px; margin-top: 10px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
         button:hover { background: #0ea5e9; }
-        #resultados { margin-top: 25px; text-align: left; }
-        .card { background: #1e293b; padding: 15px; margin-bottom: 12px; border-radius: 10px; border-left: 5px solid #38bdf8; animation: slideIn 0.3s ease-out; }
-        .label { color: #38bdf8; font-size: 11px; font-weight: bold; text-transform: uppercase; display: block; }
-        .value { font-size: 15px; margin-bottom: 5px; display: block; }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        #res { margin-top: 20px; width: 100%; }
+        .card { background: #1e293b; padding: 15px; margin-bottom: 10px; border-radius: 10px; border-left: 4px solid #38bdf8; animation: fadeIn 0.3s ease; }
+        .card b { color: #38bdf8; font-size: 12px; text-transform: uppercase; }
+        .card div { margin-bottom: 5px; }
+        .ayuda-box { background: #1e293b; border: 2px dashed #f59e0b; padding: 15px; border-radius: 10px; text-align: center; }
+        .btn-ext { display: block; padding: 10px; margin: 8px 0; border-radius: 6px; text-decoration: none; font-weight: bold; color: white; font-size: 14px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🔍 Buscador Maestro</h1>
-        <p style="color: #94a3b8;">${statusCarga}</p>
+        <div class="status">${statusCarga}</div>
 
         <div class="search-box">
-            <input type="text" id="busqueda" placeholder="Cédula o Nombre..." onkeyup="if(event.key==='Enter') buscar()">
-            <button onclick="buscar()">BUSCAR</button>
+            <input type="text" id="q" placeholder="Cédula o Nombre..." onkeyup="if(event.key==='Enter') buscar()">
+            <button onclick="buscar()">CONSULTAR</button>
         </div>
 
-        <div id="resultados"></div>
+        <div id="res"></div>
     </div>
 
     <script>
         async function buscar() {
-            const query = document.getElementById('busqueda').value;
-            const resDiv = document.getElementById('resultados');
-            
-            if (!query) return;
-            resDiv.innerHTML = '<p style="text-align:center; color:#38bdf8;">Buscando en la base de datos...</p>';
+            const q = document.getElementById('q').value;
+            const resDiv = document.getElementById('res');
+            if(!q) return;
 
+            resDiv.innerHTML = '<p style="text-align:center; color:#38bdf8;">Buscando...</p>';
+            
             try {
-                const response = await fetch('/api/buscar?q=' + encodeURIComponent(query));
+                const response = await fetch('/api/buscar?q=' + encodeURIComponent(q));
                 const datos = await response.json();
-                
                 resDiv.innerHTML = '';
-                
-                if (datos.length === 0) {
-                    resDiv.innerHTML = '<p style="text-align:center;">No se hallaron coincidencias.</p>';
+
+                if(datos.length === 0) {
+                    resDiv.innerHTML = '<p style="text-align:center;">No se encontró información.</p>';
                     return;
                 }
 
-                datos.forEach(registro => {
-                    let div = document.createElement('div');
-                    div.className = 'card';
-                    let contenido = '';
-                    for (let llave in registro) {
-                        contenido += '<div><span class="label">' + llave + '</span><span class="value">' + registro[llave] + '</span></div>';
-                    }
-                    div.innerHTML = contenido;
-                    resDiv.innerHTML += div.outerHTML;
-                });
-            } catch (error) {
-                resDiv.innerHTML = '<p style="color:red; text-align:center;">Error en la conexión.</p>';
-            }
-        }
-    </script>
-</body>
-</html>
-    `);
-});
-
-app.listen(PORT, () => console.log("Servidor de búsqueda activo"));
-
-
+                datos.forEach(r => {
+                    if(r.ES_AYUDA) {
