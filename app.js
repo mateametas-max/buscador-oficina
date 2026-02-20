@@ -15,28 +15,40 @@ let psuvCookie = "";
 // --- 1. LOGIN PSUV ---
 async function loginPSUV() {
     try {
-        const res1 = await axios.get('https://organizacion.psuv.org.ve/', { timeout: 15000 });
+        console.log("Iniciando intento de login...");
+        const res1 = await axios.get('https://organizacion.psuv.org.ve/login/', { 
+            timeout: 15000,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' }
+        });
+        
         let cookieInic = res1.headers['set-cookie'] ? res1.headers['set-cookie'].join('; ') : "";
 
+        // Usamos URLSearchParams para simular un formulario real de navegador
         const params = new URLSearchParams();
-        params.append('usuario', 'jfederico2007@gmail.com'); // <-- PON TU CORREO
-        params.append('password', '12345678');      // <-- PON TU CLAVE
-        params.append('accion', 'login');
+        params.append('usuario', 'TU_CORREO@AQUI.COM'); 
+        params.append('password', 'TU_CLAVE_AQUI');
+        params.append('entrar', '1'); // Algunos sistemas piden este campo extra
 
         const resLogin = await axios.post('https://organizacion.psuv.org.ve/login/', params, {
             headers: {
                 'Cookie': cookieInic,
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': 'https://organizacion.psuv.org.ve/'
+                'Origin': 'https://organizacion.psuv.org.ve',
+                'Referer': 'https://organizacion.psuv.org.ve/login/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'
             },
             maxRedirects: 0,
-            validateStatus: s => s >= 200 && s < 400
+            validateStatus: s => s >= 200 && s < 405
         });
         
-        psuvCookie = resLogin.headers['set-cookie'] ? resLogin.headers['set-cookie'].join('; ') : cookieInic;
-        console.log("✅ Sesión PSUV activa");
+        if (resLogin.headers['set-cookie']) {
+            psuvCookie = resLogin.headers['set-cookie'].join('; ');
+            console.log("✅ SESIÓN PSUV ACTIVADA");
+        } else {
+            console.log("⚠️ El servidor no devolvió galleta de sesión. Revisa credenciales.");
+        }
     } catch (e) {
-        console.log("⚠️ Error en Login PSUV");
+        console.log("❌ Error de conexión: " + e.message);
     }
 }
 
@@ -132,4 +144,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => console.log("V4 Online"));
+
 
