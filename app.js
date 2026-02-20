@@ -26,18 +26,41 @@ async function cargarDatos() {
 cargarDatos();
 
 // RUTA DE BÚSQUEDA (Solo consulta)
-app.get('/api/buscar', (req, res) => {
+// BUSCADOR HÍBRIDO: Drive + API Externa
+app.get('/api/buscar', async (req, res) => {
     const q = (req.query.q || "").trim().toUpperCase();
     if (!q) return res.json([]);
 
-    // Busca coincidencias en cualquier campo (Cédula, Nombre, Centro, etc.)
-    const resultados = baseDeDatos.filter(f => 
+    // A. Buscar en tus 63MB descargados de Drive
+    let resultados = baseDeDatos.filter(f => 
         Object.values(f).some(v => String(v).toUpperCase().includes(q))
-    ).slice(0, 20); // Limitamos a 20 para que cargue rápido
+    ).slice(0, 10);
+
+    // B. Si es una cédula (solo números), consultar también afuera
+    const esCedula = /^\d+$/.test(q); 
     
+    if (esCedula) {
+        try {
+            // Intentamos obtener datos frescos de la API externa
+            const resExt = await axios.get(`https://api.cedula.com.ve/v1/cedula/${q}`, { timeout: 3000 });
+            
+            if (resExt.data && resExt.data.data) {
+                const d = resExt.data.data;
+                // Agregamos el resultado externo al principio de la lista
+                resultados.unshift({
+                    CEDULA: d.cedula,
+                    NOMBRE: `${d.primer_nombre} ${d.primer_apellido}`,
+                    INFO: "DATO ACTUALIZADO (API EXTERNA)",
+                    ESTADO: d.estado || "N/A"
+                });
+            }
+        } catch (error) {
+            console.log("No se pudo consultar el sitio externo, usando solo Drive.");
+        }
+    }
+
     res.json(resultados);
 });
-
 // INTERFAZ DE USUARIO (Misma pantalla)
 app.get('/', (req, res) => {
     res.send(`
@@ -115,3 +138,4 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => console.log("Servidor de búsqueda activo"));
+
